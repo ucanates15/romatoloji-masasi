@@ -393,24 +393,69 @@ const customCriteria={
  }
 };
 
+/* ---------- Rapor şablonları ---------- */
+const FILL_KEYS=[["ILAC","Etken madde","örn. adalimumab"],["S0","Başlangıç skoru","DAS28 / BASDAİ / CRP"],["S1","Güncel skor",""],["IGIF","İGİF seri no",""],["ONAY","Onay formu seri no",""],["TARIH","Tarih","gg.aa.yyyy"]];
+const fillState={};
+function applyFill(text){
+ return text.replace(/\{(ILAC|S0|S1|IGIF|ONAY|TARIH)\}/g,(m,k)=>fillState[k]&&fillState[k].trim()?fillState[k].trim():"……");
+}
+function renderTemplates(t){
+ let html=`<h1>${t.title}<small>${t.sub}</small></h1><p class="src">Kaynak: TRD-G Anti-Romatizmal İlaçlar Kılavuzu, Kasım 2025 — "rapora eklenmesi gereken ifade" örnekleri.</p>`;
+ if(t.html){ html+=t.html+`<p class="stamp">${TPL_STAMP}</p>`; return {html}; }
+ html+=`<div class="fill">${FILL_KEYS.map(([k,l,h])=>`<div class="field"><label for="f-${k}">${l}</label><input type="text" id="f-${k}" data-k="${k}" value="${(fillState[k]||"").replace(/"/g,"&quot;")}" placeholder="${h}"></div>`).join("")}</div>
+ <p class="note">Doldurduğunuz alanlar tüm şablonlara "……" yerine işlenir; boş bırakılanlar "……" olarak kalır. Metin kutuları düzenlenebilir; köşeli parantez içindeki seçenekleri silin veya uyarlayın.</p>`;
+ t.groups.forEach((g,gi)=>{
+  html+=`<h2 class="grp">${g.name}</h2>`;
+  g.items.forEach((it,ii)=>{
+   html+=`<div class="tpl" data-g="${gi}" data-i="${ii}"><div class="tpl-h"><b>${it.t}</b><span class="dur">${it.dur}</span></div><textarea spellcheck="false">${applyFill(it.text)}</textarea><div class="tpl-f"><button type="button" class="btn primary cp">Kopyala</button><button type="button" class="btn rs">Sıfırla</button><span class="st"></span></div></div>`;
+  });
+ });
+ html+=`<p class="stamp">${TPL_STAMP}</p>`;
+ return {html, init(root){
+  const tas=$$("textarea",root);
+  const autosize=ta=>{ta.style.height="auto";ta.style.height=(ta.scrollHeight+4)+"px";};
+  tas.forEach(autosize);
+  root.addEventListener("input",e=>{
+   if(e.target.dataset.k){ fillState[e.target.dataset.k]=e.target.value; $$(".tpl",root).forEach(box=>{ if(box.dataset.edited) return; const it=t.groups[+box.dataset.g].items[+box.dataset.i]; const ta=$("textarea",box); ta.value=applyFill(it.text); autosize(ta); }); }
+   else if(e.target.tagName==="TEXTAREA"){ e.target.closest(".tpl").dataset.edited="1"; autosize(e.target); }
+  });
+  root.addEventListener("click",async e=>{
+   const box=e.target.closest(".tpl"); if(!box) return;
+   const ta=$("textarea",box), st=$(".st",box);
+   if(e.target.classList.contains("cp")){
+    try{ await navigator.clipboard.writeText(ta.value); }catch(_){ ta.select(); document.execCommand("copy"); }
+    e.target.classList.add("copied"); e.target.textContent="Kopyalandı"; st.textContent=ta.value.length+" karakter";
+    setTimeout(()=>{e.target.classList.remove("copied"); e.target.textContent="Kopyala";},1800);
+   }
+   if(e.target.classList.contains("rs")){ delete box.dataset.edited; const it=t.groups[+box.dataset.g].items[+box.dataset.i]; ta.value=applyFill(it.text); autosize(ta); st.textContent=""; }
+  });
+ }};
+}
+
 /* ---------- Yönlendirme ve çizim ---------- */
 function parse(){
  const h=location.hash.replace(/^#\/?/,"");
  const [sec,id]=h.split("/");
  if(sec==="sut") return {sec, id: SUT.some(s=>s.id===id)?id:SUT[0].id};
  if(sec==="crit") return {sec, id: CRITERIA.some(s=>s.id===id)?id:CRITERIA[0].id};
+ if(sec==="tpl") return {sec, id: TEMPLATES.some(s=>s.id===id)?id:TEMPLATES[0].id};
  return {sec:"calc", id: CALCS.some(s=>s.id===id)?id:CALCS[0].id};
 }
 function renderIndex(sec,id){
- const list = sec==="calc"?CALCS:sec==="sut"?SUT:CRITERIA;
- const titles={calc:["Hesaplayıcılar","Skorlar SUT eşikleriyle birlikte gösterilir."],sut:["SUT rapor kriterleri","Biyolojik ve hedefe yönelik ajanlar, hastalığa göre."],crit:["Sınıflama kriterleri","ACR/EULAR ve ilgili kriter setleri, puanlanabilir."]};
+ const list = sec==="calc"?CALCS:sec==="sut"?SUT:sec==="tpl"?TEMPLATES:CRITERIA;
+ const titles={calc:["Hesaplayıcılar","Skorlar SUT eşikleriyle birlikte gösterilir."],sut:["SUT rapor kriterleri","Biyolojik ve hedefe yönelik ajanlar, hastalığa göre."],crit:["Sınıflama kriterleri","ACR/EULAR ve ilgili kriter setleri, puanlanabilir."],tpl:["Rapor şablonları","Alanları doldurun, metni düzenleyip kopyalayın."]};
  let html=`<h2>${titles[sec][0]}</h2><p>${titles[sec][1]}</p><ul>`;
  let g=null;
  list.forEach(it=>{
   if(it.group&&it.group!==g){ g=it.group; html+=`<li class="group">${g}</li>`; }
   html+=`<li><a href="#/${sec}/${it.id}" class="${it.id===id?"on":""}">${it.title}</a></li>`;
  });
- $("#index").innerHTML=html+"</ul>";
+ $("#index").innerHTML=html+"</ul>"+`<svg class="flower" viewBox="0 0 120 150" aria-hidden="true" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<g stroke="#9F8BC4" stroke-width="1.4"><path d="M44 148V96"/><path d="M78 148V104"/><path d="M40 148c0-10-8-16-16-18"/><path d="M84 148c0-9 8-14 16-16"/></g>
+<g stroke="#5B4185" stroke-width="1.5" fill="#EEE8F6"><path d="M44 96c-9 0-14-9-14-22 0 0 6 6 14 6s14-6 14-6c0 13-5 22-14 22z"/><path d="M78 104c-7 0-11-8-11-18 0 0 4.5 5 11 5s11-5 11-5c0 10-4 18-11 18z"/></g>
+<g stroke="#5B4185" stroke-width="1.5"><path d="M30 74C25 66 25 54 27 52c2-1 8 8 13 20"/><path d="M58 74c5-8 5-20 3-22-2-1-8 8-13 20"/><path d="M44 80V56"/><path d="M67 91c-4-6-4-16-2-17 1.5-.5 6 6 9 15"/><path d="M89 91c4-6 4-16 2-17-1.5-.5-6 6-9 15"/><path d="M78 92V74"/></g>
+<g stroke="#B8860B" stroke-width="1.4"><path d="M40 76c1-3 2.5-5 4-5s3 2 4 5"/><path d="M75 90c.8-2.5 2-4 3-4s2.2 1.5 3 4"/></g>
+</svg>`;
  $$(".nav a").forEach(a=>{ if(a.dataset.sec===sec) a.setAttribute("aria-current","page"); else a.removeAttribute("aria-current"); });
  const on=$("#index a.on"); if(on&&window.innerWidth<860){ const ul=on.closest("ul"); ul.scrollLeft=on.offsetLeft-ul.clientWidth/2+on.offsetWidth/2; }
 }
@@ -421,8 +466,9 @@ function render(){
  const card=document.createElement("section"); card.className="card"+(sec==="crit"?" crit":"");
  if(sec==="calc"){ const v=calcViews[id](); card.innerHTML=v.html; main.appendChild(card); v.init(card); }
  else if(sec==="sut"){ const s=SUT.find(x=>x.id===id); card.innerHTML=`<h1>${s.title}<small>${s.sub}</small></h1><p class="src">SUT 4.2.1.C — özet; hukuki metin değildir.</p>${s.html}<p class="stamp">${SUT_STAMP}</p>`; main.appendChild(card); }
+ else if(sec==="tpl"){ const v=renderTemplates(TEMPLATES.find(x=>x.id===id)); card.innerHTML=v.html; main.appendChild(card); v.init&&v.init(card); }
  else { const c=CRITERIA.find(x=>x.id===id); const v=c.custom?customCriteria[c.custom](c):renderGenericCriteria(c); card.innerHTML=v.html; main.appendChild(card); v.init(card); }
- document.title=`${sec==="calc"?CALCS.find(x=>x.id===id).title:sec==="sut"?SUT.find(x=>x.id===id).title:CRITERIA.find(x=>x.id===id).title} — Romatoloji Masası`;
+ document.title=`${(sec==="calc"?CALCS:sec==="sut"?SUT:sec==="tpl"?TEMPLATES:CRITERIA).find(x=>x.id===id).title} — Romatoloji Masası`;
  window.scrollTo({top:0});
 }
 window.addEventListener("hashchange",render);

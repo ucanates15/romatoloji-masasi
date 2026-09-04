@@ -68,7 +68,7 @@ const SUT = [
  <tr><th>Rapor</th><td>En fazla 6 ay süreli; romatoloji veya üniversite/EAH'de klinik immünoloji / FTR uzmanı. İç hastalıkları uzmanı reçete edebilir.</td></tr>
  </table>
  </div></details>
- <div class="note">Tüm RA ajanları için başlangıç eşiği DAS28 &gt; 5,1; yanıt eşikleri Δ &gt; 0,6 (3. ay) ve toplam Δ &gt; 1,2 (6. ay). <a href="#/calc/das28">DAS28 hesaplayıcıda</a> eşikler işaretlidir.</div>
+ <div class="note">Tüm RA ajanları için başlangıç eşiği DAS28 &gt; 5,1; yanıt eşikleri Δ &gt; 0,6 (3. ay) ve toplam Δ &gt; 1,2 (6. ay). <a href="#/calc/das28">DAS28 hesaplayıcıda</a> eşikler işaretlidir. Hazır metinler: <a href="#/tpl/ra">RA rapor şablonları</a>.</div>
  `
 },
 {
@@ -110,13 +110,13 @@ const SUT = [
  <tr><th>12. hafta</th><td>BASDAİ'de ≥2 birim düzelme → 6 aylık raporla devam.</td></tr>
  </table>
  </div></details>
- <div class="note">Tüm axSpA ajanları için başlangıç eşiği BASDAİ &gt; 5 ve yanıt eşiği Δ ≥ 2. <a href="#/calc/basdai">BASDAİ hesaplayıcıda</a> işaretlidir.</div>
+ <div class="note">Tüm axSpA ajanları için başlangıç eşiği BASDAİ &gt; 5 ve yanıt eşiği Δ ≥ 2. <a href="#/calc/basdai">BASDAİ hesaplayıcıda</a> işaretlidir. Hazır metinler: <a href="#/tpl/axspa">AS/axSpA rapor şablonları</a>.</div>
  `
 },
 {
  id:"psa", title:"Psöriatik artrit", sub:"Anti-TNF, sekukinumab, iksekizumab, ustekinumab, JAK, apremilast",
  html:`
- <div class="note">PsA'da SUT aktivite tanımı: <b>bir ay arayla iki ayrı muayenede ≥3 hassas ve ≥3 şiş eklem</b>. Yanıt değerlendirmesi <b>PsARC</b> ile. <a href="#/calc/psarc">PsARC hesaplayıcı</a>.</div>
+ <div class="note">PsA'da SUT aktivite tanımı: <b>bir ay arayla iki ayrı muayenede ≥3 hassas ve ≥3 şiş eklem</b>. Yanıt değerlendirmesi <b>PsARC</b> ile. <a href="#/calc/psarc">PsARC hesaplayıcı</a> · <a href="#/tpl/psa">PsA rapor şablonları</a>.</div>
  <details class="sut-drug" open><summary>Anti-TNF<span class="tag">4.2.1.C-1 (5)</span></summary><div class="sut-body">
  <table>
  <tr><th>Başlangıç</th><td><b>≥3 farklı csDMARD</b>, uygun dozda, her biri <b>≥3 ay</b> kullanılmasına rağmen aktif hastalık (≥3 hassas + ≥3 şiş eklem, 1 ay arayla 2 muayene).</td></tr>
@@ -157,23 +157,26 @@ const SUT = [
  `
 },
 {
- id:"fmf", title:"Ailevi Akdeniz ateşi", sub:"Anakinra ve kanakinumab — kolşisin direnci / amiloidoz",
+ id:"fmf", title:"Ailevi Akdeniz ateşi", sub:"Anakinra ve kanakinumab — kolşisin direnci / amiloidoz (≥2 yaş, >7,5 kg)",
  html:`
  <details class="sut-drug" open><summary>Amiloidozu olmayan FMF<span class="tag">4.2.1.C-7 (2a)</span></summary><div class="sut-body">
  <table>
  <tr><th>Kolşisin</th><td>Tolere edilen maksimum dozda; önce yurt içi, yanıt yoksa yurt dışı preparat; toplam <b>≥6 ay</b>.</td></tr>
- <tr><th>Anakinra başlangıç</th><td>Kolşisine rağmen son 3 ayda <b>akut faz yüksekliği ile kanıtlanmış ≥3 atak</b> ve/veya ataksız dönemde <b>SAA yüksekliği</b>. Ciddi kolşisin intoleransında tek başına anakinra mümkün. 12 ay+ ara → başlangıç kriterleri.</td></tr>
- <tr><th>Kanakinumaba geçiş</th><td>Aralıksız <b>3 ay</b> düzenli anakinraya rağmen ≥3 atak ve <b>CRP &gt; 10 mg/L</b> ve/veya SAA yüksekliği; ya da anakinraya ciddi yan etki.</td></tr>
- <tr><th>Kanakinumab takibi</th><td>3 ayda bir yanıt değerlendirmesi. 3 ay düzenli kullanıma rağmen ≥3 atak ve CRP &gt; 10 → sonlandırılır. Tedavi altında <b>6 ay ataksız</b> dönem → takip eden 6 ayda doz aralığı açılarak sonlandırılır.</td></tr>
- <tr><th>Rapor</th><td>3. basamakta, en az bir romatoloji uzmanı içeren sağlık kurulu raporu; romatoloji uzmanı reçete eder. Ayrıca <b>Sağlık Bakanlığı endikasyon dışı onayı</b> gerekir. Ağırlık &gt; 7,5 kg, ≥2 yaş.</td></tr>
+ <tr><th>Anakinra başlangıç</th><td>Kolşisine rağmen son 3 ayda akut faz yüksekliği ile kanıtlanmış <b>≥3 atak</b>: atak dönemlerine ait, <b>en az 15 gün arayla</b> ölçülmüş, <b>ÜSN'nin ≥2 katı CRP</b> değerleri tarih ve sonuçlarıyla raporda yazılmalı. Kolşisine ciddi intoleransta doğrudan anakinra ile başlanabilir. Yanıt alınırsa idamede anakinra ile devam. 6 ay+ ara/kesilme sonrası: son 6 ayda ≥3 atak belgelenirse başlangıç kriteri aranmadan devam.</td></tr>
+ <tr><th>Kanakinumaba geçiş</th><td>Aralıksız <b>3 ay</b> düzenli anakinraya rağmen son 3 ayda ≥3 atak (<b>18 yaş altında 2 atak</b>; aynı CRP belgeleme kuralı) veya anakinrayı engelleyen ciddi yan etki (ilgili branş hekimince belgelenmiş; notun tarihi ve branşı raporda).</td></tr>
+ <tr><th>Kanakinumab devam</th><td>Düzenli 3 ay sonrası atak sıklık/şiddetinin azaldığı raporda belirtilirse devam. 6 ay+ ara: bu sürede ≥3 atak belgelenirse başlangıç kriteri aranmadan devam.</td></tr>
+ <tr><th>Doz aralığı açma</th><td>Tedavi altında <b>6 ay ataksız + akut faz normal</b> → takip eden 6 ayda aralık 2 ayda bire; atak yoksa sonraki 6 ayda 3 ayda bire; 6 ay boyunca normal CRP ile atak yoksa kanakinumab <b>sonlandırılır</b>.</td></tr>
+ <tr><th>Rapor</th><td>Resmî 3. basamakta, en az bir romatoloji uzmanı içeren sağlık kurulu raporu; romatoloji uzmanı reçete eder. Anakinra raporu 3 ay, kanakinumab 3 ay. Sağlık Bakanlığı endikasyon dışı onayı da gerekir.</td></tr>
  </table>
  </div></details>
  <details class="sut-drug"><summary>Amiloidozu olan FMF<span class="tag">4.2.1.C-7 (2b)</span></summary><div class="sut-body">
  <table>
- <tr><th>Koşul</th><td>Biyopsi ile AA amiloid; etkin doz kolşisine ardışık 3 ay rağmen CRP/SAA normale gerilemiyor, proteinüri sürüyor/artıyor veya yeni organ tutulumu.</td></tr>
- <tr><th>Ajan</th><td>Anakinra <b>veya</b> kanakinumab (basamak şartı yok). En fazla 1 yıl süreli rapor; 3. basamak, romatoloji uzmanı. Endikasyon dışı onay gerekir.</td></tr>
+ <tr><th>Koşul</th><td>Herhangi bir dokuda biyopsi ile AA tipi amiloid kanıtı → <b>anakinra</b> ile başlanır (3 ay).</td></tr>
+ <tr><th>Kanakinumaba geçiş</th><td>3 ay anakinraya yeterli yanıt yoksa (gerekçe romatoloji/nefroloji uzmanınca raporda) veya ciddi yan etki (belgelenmiş) → kanakinumab.</td></tr>
+ <tr><th>Rapor</th><td>En fazla <b>1 yıl</b>; en az bir romatoloji ve/veya nefroloji uzmanı; 3. basamakta bu uzmanlarca reçete. Yanıt alınanlarda doz aralığı açılarak 1 yıllık raporla devam.</td></tr>
  </table>
  </div></details>
+ <div class="note sut">Hazır rapor metinleri için <a href="#/tpl/otoinflam">FMF ve otoinflamatuvar şablonlar</a>.</div>
  `
 },
 {
