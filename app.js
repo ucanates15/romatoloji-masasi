@@ -9,12 +9,19 @@ const numv = (id) => { const v = parseFloat(String($("#"+id)?.value ?? "").repla
 
 /* ---------- Hesaplayıcı kataloğu ---------- */
 const CALCS = [
+ {id:"ra", group:"Romatoid artrit", title:"RA tek sayfa", sub:"DAS28-ESH, DAS28-CRP, CDAI, SDAI birlikte"},
  {id:"das28", group:"Romatoid artrit", title:"DAS28", sub:"ESH veya CRP ile; SUT eşikleri işaretli"},
  {id:"cdai", group:"Romatoid artrit", title:"CDAI / SDAI", sub:"Hekim global ile basit indeksler"},
+ {id:"haq", group:"Romatoid artrit", title:"HAQ-DI", sub:"Sağlık Değerlendirme Anketi — fonksiyonel kısıtlılık"},
  {id:"basdai", group:"Spondiloartrit", title:"BASDAİ", sub:"6 soru; SUT eşiği >5 ve Δ≥2"},
  {id:"asdas", group:"Spondiloartrit", title:"ASDAS", sub:"CRP veya ESH ile"},
  {id:"psarc", group:"Spondiloartrit", title:"PsARC", sub:"Psöriatik artrit yanıt kriteri (SUT)"},
- {id:"sledai", group:"Bağ dokusu", title:"SLEDAI-2K", sub:"24 madde, son 10 gün"}
+ {id:"dapsa", group:"Spondiloartrit", title:"DAPSA", sub:"Psöriatik artritte hastalık aktivitesi"},
+ {id:"sledai", group:"Bağ dokusu", title:"SLEDAI-2K", sub:"24 madde, son 10 gün"},
+ {id:"essdai", group:"Bağ dokusu", title:"ESSDAI", sub:"Sjögren sendromu hastalık aktivitesi"},
+ {id:"bvas", group:"Vaskülit", title:"BVAS v3", sub:"Birmingham vaskülit aktivite skoru"},
+ {id:"itas", group:"Vaskülit", title:"ITAS2010", sub:"Takayasu arteriti aktivite skoru (ITAS-A ile)"},
+ {id:"vdi", group:"Vaskülit", title:"VDI", sub:"Vaskülit hasar indeksi"}
 ];
 
 /* ---------- Ortak yardımcılar ---------- */
@@ -55,6 +62,92 @@ function seg(id, options, current){
 
 /* ---------- Hesaplayıcılar ---------- */
 const calcViews = {
+ ra(){
+  let vas = "cm", crpU = "mgL", sutSrc = "esr";
+  const html = `
+  <h1>RA tek sayfa <small>DAS28-ESH · DAS28-CRP · CDAI · SDAI — ortak parametrelerle</small></h1>
+  <p class="src">Her skor, kendi parametreleri girildiği anda hesaplanır; eksik olanlar için neyin gerektiği gösterilir. Prevoo 1995, Fransen 2005, Smolen 2003, Aletaha 2005.</p>
+  <div class="ra-opts">
+   <div><span class="lbl">Global (VAS) ölçeği</span>${seg("ra-vas",[{v:"cm",l:"0–10 cm"},{v:"mm",l:"0–100 mm"}],"cm")}</div>
+   <div><span class="lbl">CRP birimi</span>${seg("ra-crpu",[{v:"mgL",l:"mg/L"},{v:"mgdL",l:"mg/dL"}],"mgL")}</div>
+  </div>
+  <div class="grid">
+   ${field("ra-tjc","Hassas eklem (0–28)",{max:28})}
+   ${field("ra-sjc","Şiş eklem (0–28)",{max:28})}
+   ${field("ra-pga","Hasta global",{max:100,step:0.1,hint:"Seçili ölçekte"})}
+   ${field("ra-ega","Hekim global",{max:100,step:0.1,hint:"Yalnız CDAI/SDAI için"})}
+   ${field("ra-esr","ESH (mm/saat)",{max:200,min:1,hint:"DAS28-ESH için"})}
+   ${field("ra-crp","CRP",{max:500,step:0.01,hint:"DAS28-CRP ve SDAI için"})}
+  </div>
+  <h3>SUT değerlendirmesi (isteğe bağlı)</h3>
+  <div class="grid">
+   <div class="field"><label>SUT için esas alınan DAS28</label>${seg("ra-sut",[{v:"esr",l:"DAS28-ESH"},{v:"crp",l:"DAS28-CRP"}],"esr")}</div>
+   ${field("ra-base","Başlangıç DAS28",{max:10,step:0.01,hint:"Δ ve EULAR yanıtı için"})}
+  </div>
+  <div class="actions"><button class="btn" type="button" id="ra-clr">Temizle</button></div>
+  <div class="result" id="out"></div>`;
+  return {html, init(root){
+   const bindSeg = (id, set) => { const el=$("#"+id,root); el.addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return; set(b.dataset.v); $$("button",el).forEach(x=>x.setAttribute("aria-pressed",x===b)); calc(); }); };
+   bindSeg("ra-vas", v=>{ vas=v; });
+   bindSeg("ra-crpu", v=>{ crpU=v; });
+   bindSeg("ra-sut", v=>{ sutSrc=v; });
+   root.addEventListener("input", calc);
+   $("#ra-clr",root).addEventListener("click",()=>{ $$("input[type=number]",root).forEach(i=>i.value=""); calc(); });
+   const need = arr => `<div class="miss">Gerekli: ${arr.join(", ")}</div>`;
+   function tile(name, val, cat, bandZones, bandMax, missing){
+    if(val==null) return `<div class="ra-tile empty"><div class="nm">${name}</div><div class="v">—</div>${need(missing)}</div>`;
+    return `<div class="ra-tile"><div class="nm">${name}</div><div class="v">${fmt(val, name.startsWith("DAS")?2:1)}</div><div class="cat ${cat.cls}">${cat.label}</div>${bandHTML(bandZones, Math.min(val,bandMax), 0, bandMax)}</div>`;
+   }
+   function calc(){
+    const tjc=numv("ra-tjc"), sjc=numv("ra-sjc"), pgaIn=numv("ra-pga"), egaIn=numv("ra-ega"), esr=numv("ra-esr"), crpIn=numv("ra-crp"), base=numv("ra-base");
+    const pgaMm = pgaIn==null?null:(vas==="cm"?pgaIn*10:pgaIn);
+    const pgaCm = pgaIn==null?null:(vas==="cm"?pgaIn:pgaIn/10);
+    const egaCm = egaIn==null?null:(vas==="cm"?egaIn:egaIn/10);
+    const crpMgL = crpIn==null?null:(crpU==="mgL"?crpIn:crpIn*10);
+    const crpMgdL = crpIn==null?null:(crpU==="mgL"?crpIn/10:crpIn);
+    const out=$("#out",root);
+    // uyarılar
+    const warns=[];
+    if(tjc!=null&&(tjc<0||tjc>28)) warns.push("Hassas eklem 0–28 olmalı.");
+    if(sjc!=null&&(sjc<0||sjc>28)) warns.push("Şiş eklem 0–28 olmalı.");
+    const vmax = vas==="cm"?10:100;
+    if(pgaIn!=null&&(pgaIn<0||pgaIn>vmax)) warns.push(`Hasta global seçili ölçekte 0–${vmax} olmalı.`);
+    if(egaIn!=null&&(egaIn<0||egaIn>vmax)) warns.push(`Hekim global seçili ölçekte 0–${vmax} olmalı.`);
+    // ortak eksikler
+    const core = []; if(tjc==null) core.push("hassas eklem"); if(sjc==null) core.push("şiş eklem"); if(pgaIn==null) core.push("hasta global");
+    const dasCut=[{max:2.6-1e-9,label:"Remisyon",cls:"ok"},{max:3.2,label:"Düşük aktivite",cls:"ok"},{max:5.1,label:"Orta aktivite",cls:"mid"},{max:99,label:"Yüksek aktivite",cls:"warn"}];
+    const dasBand=[{to:2.6,cls:"g"},{to:3.2,cls:"y"},{to:5.1,cls:"o"},{to:8,cls:"r"}];
+    let dEsr=null, dCrp=null, cdai=null, sdai=null;
+    const okCore = core.length===0;
+    if(okCore && esr!=null && esr>0) dEsr = 0.56*Math.sqrt(tjc)+0.28*Math.sqrt(sjc)+0.70*Math.log(esr)+0.014*pgaMm;
+    if(okCore && crpMgL!=null && crpMgL>=0) dCrp = 0.56*Math.sqrt(tjc)+0.28*Math.sqrt(sjc)+0.36*Math.log(crpMgL+1)+0.014*pgaMm+0.96;
+    if(okCore && egaCm!=null) cdai = tjc+sjc+pgaCm+egaCm;
+    if(cdai!=null && crpMgdL!=null) sdai = cdai+crpMgdL;
+    let html = warns.length?`<div class="sutline"><b>!</b><span>${warns.join(" ")}</span></div>`:"";
+    html += `<div class="ra-grid">`;
+    html += tile("DAS28-ESH", dEsr, dEsr!=null&&catFor(dEsr,dasCut), dasBand, 8, [...core, ...(esr==null||esr<=0?["ESH"]:[])]);
+    html += tile("DAS28-CRP", dCrp, dCrp!=null&&catFor(dCrp,dasCut), dasBand, 8, [...core, ...(crpIn==null?["CRP"]:[])]);
+    html += tile("CDAI", cdai, cdai!=null&&catFor(cdai,[{max:2.8,label:"Remisyon",cls:"ok"},{max:10,label:"Düşük aktivite",cls:"ok"},{max:22,label:"Orta aktivite",cls:"mid"},{max:999,label:"Yüksek aktivite",cls:"warn"}]), [{to:2.8,cls:"g"},{to:10,cls:"y"},{to:22,cls:"o"},{to:40,cls:"r"}], 40, [...core, ...(egaIn==null?["hekim global"]:[])]);
+    html += tile("SDAI", sdai, sdai!=null&&catFor(sdai,[{max:3.3,label:"Remisyon",cls:"ok"},{max:11,label:"Düşük aktivite",cls:"ok"},{max:26,label:"Orta aktivite",cls:"mid"},{max:999,label:"Yüksek aktivite",cls:"warn"}]), [{to:3.3,cls:"g"},{to:11,cls:"y"},{to:26,cls:"o"},{to:45,cls:"r"}], 45, [...core, ...(egaIn==null?["hekim global"]:[]), ...(crpIn==null?["CRP"]:[])]);
+    html += `</div>`;
+    // SUT
+    const das = sutSrc==="esr"?dEsr:dCrp, lab = sutSrc==="esr"?"DAS28-ESH":"DAS28-CRP";
+    if(das!=null){
+     html += sutLine(das>5.1, das>5.1 ? `${lab} ${fmt(das)} &gt; 5,1 — biyolojik/JAK <b>başlangıç eşiği karşılanıyor</b> (diğer koşullarla birlikte).` : `${lab} ${fmt(das)} ≤ 5,1 — SUT başlangıç eşiği karşılanmıyor.`);
+     if(base!=null){
+      const d = base-das;
+      html += `<div class="delta">${deltaBox(`Δ ${lab} (başlangıç − güncel)`, fmt(d), d>0)}${deltaBox("3. ay: Δ > 0,6", d>0.6?"Karşılıyor":"Karşılamıyor", d>0.6)}${deltaBox("6. ay: toplam Δ > 1,2", d>1.2?"Karşılıyor":"Karşılamıyor", d>1.2)}${deltaBox("EULAR yanıtı", eular(base,das), eular(base,das)!=="Yanıtsız")}</div>`;
+     }
+    } else {
+     html += sutLine(null, `SUT değerlendirmesi için ${lab} hesaplanabilmeli. CDAI/SDAI klinik takip içindir.`);
+    }
+    html += `<p class="stamp">Kesme noktaları — DAS28: &lt;2,6 · ≤3,2 · ≤5,1 · &gt;5,1. CDAI: ≤2,8 · ≤10 · ≤22 · &gt;22. SDAI: ≤3,3 · ≤11 · ≤26 · &gt;26. DAS28'de hasta global mm, CRP mg/L; CDAI/SDAI'de globaller cm, CRP mg/dL olarak alınır (dönüşüm otomatik).</p>`;
+    out.innerHTML = html;
+   }
+   function eular(b,c){ const d=b-c; if(d>1.2) return c<=3.2?"İyi yanıt":"Orta yanıt"; if(d>0.6) return c<=5.1?"Orta yanıt":"Yanıtsız"; return "Yanıtsız"; }
+   calc();
+  }};
+ },
  das28(){
   let mode = "esr";
   const html = `
@@ -121,6 +214,70 @@ const calcViews = {
      html+=`<div class="big" style="margin-top:8px"><span class="val">${fmt(sdai,1)}</span><span class="cat ${sc.cls}">SDAI — ${sc.label}</span></div>`+bandHTML([{to:3.3,cls:"g"},{to:11,cls:"y"},{to:26,cls:"o"},{to:45,cls:"r"}],Math.min(sdai,45),0,45); }
     html+=sutLine(null,"SUT raporlarında DAS28 istenir; CDAI/SDAI klinik takip içindir.");
     out.innerHTML=html;
+   }
+   calc();
+  }};
+ },
+ haq(){
+  const CATS=[
+   ["Giyinme ve kişisel bakım",["Ayakkabı bağcığını bağlama ve düğme ilikleme dahil kendi kendinize giyinebiliyor musunuz?","Saçınızı yıkayabiliyor musunuz?"],"Düğme/fermuar yardımcısı, uzun saplı ayakkabı çekeceği vb."],
+   ["Kalkma",["Kolları olmayan düz bir sandalyeden kalkabiliyor musunuz?","Yatağa yatıp kalkabiliyor musunuz?"],"Yükseltilmiş veya özel sandalye"],
+   ["Yemek yeme",["Etinizi kesebiliyor musunuz?","Dolu bir bardak veya fincanı ağzınıza götürebiliyor musunuz?","Yeni (açılmamış) bir süt kutusunu açabiliyor musunuz?"],"Kalın saplı veya özel çatal-bıçak"],
+   ["Yürüme",["Dışarıda düz zeminde yürüyebiliyor musunuz?","Beş basamak merdiven çıkabiliyor musunuz?"],"Baston, yürüteç, koltuk değneği, tekerlekli sandalye"],
+   ["Hijyen",["Tüm vücudunuzu yıkayıp kurulayabiliyor musunuz?","Küvette banyo yapabiliyor musunuz?","Tuvalete oturup kalkabiliyor musunuz?"],"Yükseltilmiş klozet, banyo taburesi, tutunma barı, uzun saplı banyo aletleri"],
+   ["Uzanma",["Başınızın üzerindeki bir raftan 2 kg'lık bir nesneyi (ör. bir paket şeker) alıp indirebiliyor musunuz?","Yerden bir giysiyi almak için eğilebiliyor musunuz?"],"Uzun saplı uzanma aletleri"],
+   ["Kavrama",["Araba kapısını açabiliyor musunuz?","Daha önce açılmış kavanozları açabiliyor musunuz?","Musluğu açıp kapatabiliyor musunuz?"],"Kavanoz açacağı"],
+   ["Günlük aktiviteler",["Alışverişe gidip ayak işlerinizi yapabiliyor musunuz?","Arabaya binip inebiliyor musunuz?","Elektrik süpürgesi kullanma veya bahçe işleri gibi ev işlerini yapabiliyor musunuz?"],""]
+  ];
+  const OPTS=[{v:"0",l:"0"},{v:"1",l:"1"},{v:"2",l:"2"},{v:"3",l:"3"}];
+  let q=0;
+  const html = `
+  <h1>HAQ-DI <small>Health Assessment Questionnaire — Disability Index</small></h1>
+  <p class="src">Fries 1980; Bruce &amp; Fries 2003. Son 1 haftaya göre yanıtlanır. 8 kategori, 20 soru; kategori puanı içindeki en yüksek madde puanıdır. Yardımcı araç veya başka birinin yardımı gerekiyorsa kategori puanı en az 2 alınır. HAQ-DI = kategori puanları toplamı ÷ yanıtlanan kategori sayısı (en az 6 kategori gerekli).</p>
+  <div class="haq-legend"><span><b>0</b> Zorlanmadan</span><span><b>1</b> Biraz zorlanarak</span><span><b>2</b> Çok zorlanarak</span><span><b>3</b> Yapamıyorum</span></div>
+  ${CATS.map((c,ci)=>`<div class="haq-cat"><h3>${ci+1}. ${c[0]}</h3>
+   ${c[1].map(t=>{ const id="haq-"+(q++); return `<div class="haq-row"><span class="haq-q">${t}</span>${seg(id,OPTS,null)}</div>`; }).join("")}
+   <label class="chk haq-aid"><input type="checkbox" id="haq-aid-${ci}"><span>Bu alanda yardımcı araç veya başka birinin yardımı gerekiyor${c[2]?` <span class="hint">(${c[2]})</span>`:""}</span></label>
+  </div>`).join("")}
+  <div class="grid">${field("haq-base","Önceki HAQ-DI (isteğe bağlı)",{max:3,step:0.125,hint:"Değişimi ve MCID'yi gösterir"})}</div>
+  <div class="actions"><button class="btn" type="button" id="haq-clr">Temizle</button></div>
+  <div class="result sticky" id="out"></div>
+  <div id="out2"></div>`;
+  return {html, init(root){
+   const ans={};
+   root.addEventListener("click", e=>{
+    const b=e.target.closest(".seg button"); if(!b) return;
+    const sg=b.parentElement, cur=ans[sg.id];
+    if(cur===+b.dataset.v){ delete ans[sg.id]; b.setAttribute("aria-pressed","false"); }
+    else { ans[sg.id]=+b.dataset.v; $$("button",sg).forEach(x=>x.setAttribute("aria-pressed",x===b)); }
+    calc();
+   });
+   root.addEventListener("change", calc);
+   root.addEventListener("input", calc);
+   $("#haq-clr",root).addEventListener("click",()=>{ Object.keys(ans).forEach(k=>delete ans[k]); $$(".seg button",root).forEach(x=>x.setAttribute("aria-pressed","false")); $$("input[type=checkbox]",root).forEach(i=>i.checked=false); $("#haq-base",root).value=""; calc(); });
+   function calc(){
+    let k=0, sum=0, n=0, answered=0; const rows=[];
+    CATS.forEach((c,ci)=>{
+     const vals=c[1].map(()=>ans["haq-"+(k++)]).filter(v=>v!=null);
+     answered+=vals.length;
+     const aid=$("#haq-aid-"+ci,root).checked;
+     if(!vals.length){ rows.push([c[0],null,aid]); return; }
+     let sc=Math.max(...vals); const raised = aid && sc<2; if(raised) sc=2;
+     sum+=sc; n++; rows.push([c[0],sc,raised]);
+    });
+    const out=$("#out",root), out2=$("#out2",root);
+    if(n<6){ out2.innerHTML=""; out.innerHTML=`<p style="color:var(--muted);margin:0">${n} / 8 kategori yanıtlandı (${answered} / 20 soru). Puan için en az 6 kategoride en az bir soru yanıtlanmalı.</p>`; return; }
+    const haq=sum/n;
+    const cat=catFor(haq,[{max:1,label:"Hafif–orta kısıtlılık",cls:"ok"},{max:2,label:"Orta–ağır kısıtlılık",cls:"mid"},{max:3,label:"Ağır–çok ağır kısıtlılık",cls:"warn"}]);
+    let html=`<div class="big"><span class="val">${fmt(haq,3)}</span><span class="cat ${cat.cls}">${cat.label}</span><span style="color:var(--muted);font-size:14px">${n} kategori</span></div>`;
+    html+=bandHTML([{to:1,cls:"g"},{to:2,cls:"o"},{to:3,cls:"r"}],haq,0,3);
+    out.innerHTML=html; html="";
+    html+=`<div class="delta haq-cats">${rows.map(r=>`<div>${r[0]}<b class="${r[1]==null?"":r[1]>=2?"no":"yes"}">${r[1]==null?"—":r[1]}${r[2]?` <span style="font-size:12px;font-weight:400;color:var(--muted)">(yardım ile 2)</span>`:""}</b></div>`).join("")}</div>`;
+    const base=numv("haq-base");
+    if(base!=null){ const d=base-haq; const ok=d>=0.22;
+     html+=`<div class="delta">${deltaBox("Δ HAQ-DI (önceki − güncel)", (d>0?"+":"")+fmt(d,3), d>0)}${deltaBox("Klinik anlamlı iyileşme (MCID ≥ 0,22)", ok?"Var":"Yok", ok)}</div>`; }
+    html+=`<p class="stamp">Yorum (Bruce &amp; Fries): 0–1 hafif–orta, 1–2 orta–ağır, 2–3 ağır–çok ağır kısıtlılık. RA'da MCID 0,22. Puan 0,125'lik basamaklarla değişir; 8 kategori yanıtlandığında ondalık 3 hane gösterilir.</p>`;
+    out2.innerHTML=`<div class="result">${html}</div>`;
    }
    calc();
   }};
@@ -216,6 +373,204 @@ const calcViews = {
     html+=`<div class="delta">${Object.entries(r).map(([k,v])=>`<div>${k}<b class="${v==="better"?"yes":v==="worse"?"no":""}">${v==="better"?"Düzeldi":v==="worse"?"Kötüleşti":"Değişmedi"}</b></div>`).join("")}</div>`;
     html+=sutLine(resp, resp?`PsARC yanıtı var — SUT'a göre tedaviye <b>devam edilebilir</b>.`:`PsARC yanıtı yok — SUT'a göre devamı ödenmez.`);
     out.innerHTML=html;
+   }
+   calc();
+  }};
+ },
+ dapsa(){
+  let crpU="mgL";
+  const html = `
+  <h1>DAPSA <small>Disease Activity in Psoriatic Arthritis</small></h1>
+  <p class="src">Schoels 2010, 2016. DAPSA = hassas eklem (68) + şiş eklem (66) + hasta global (0–10) + ağrı (0–10) + CRP (mg/dL). Remisyon ≤ 4 · düşük ≤ 14 · orta ≤ 28 · yüksek &gt; 28.</p>
+  <div class="ra-opts"><div><span class="lbl">CRP birimi</span>${seg("dp-crpu",[{v:"mgL",l:"mg/L"},{v:"mgdL",l:"mg/dL"}],"mgL")}</div></div>
+  <div class="grid">
+   ${field("dp-tjc","Hassas eklem (0–68)",{max:68})}
+   ${field("dp-sjc","Şiş eklem (0–66)",{max:66})}
+   ${field("dp-pga","Hasta global (0–10)",{max:10,step:0.1,hint:"Son 1 haftada hastalık etkisi"})}
+   ${field("dp-pain","Ağrı (0–10)",{max:10,step:0.1,hint:"Son 1 haftada eklem ağrısı"})}
+   ${field("dp-crp","CRP",{max:500,step:0.01,hint:"Seçili birimde"})}
+   ${field("dp-base","Başlangıç DAPSA (isteğe bağlı)",{max:200,step:0.1,hint:"Yanıtı (DAPSA50/75/85) hesaplar"})}
+  </div>
+  <div class="actions"><button class="btn" type="button" id="dp-clr">Temizle</button></div>
+  <div class="result" id="out"></div>`;
+  return {html, init(root){
+   const el=$("#dp-crpu",root);
+   el.addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return; crpU=b.dataset.v; $$("button",el).forEach(x=>x.setAttribute("aria-pressed",x===b)); calc(); });
+   root.addEventListener("input",calc);
+   $("#dp-clr",root).addEventListener("click",()=>{ $$("input[type=number]",root).forEach(i=>i.value=""); calc(); });
+   function calc(){
+    const t=numv("dp-tjc"), s=numv("dp-sjc"), g=numv("dp-pga"), p=numv("dp-pain"), c=numv("dp-crp"), base=numv("dp-base");
+    const out=$("#out",root);
+    const miss=[]; if(t==null) miss.push("hassas eklem"); if(s==null) miss.push("şiş eklem"); if(g==null) miss.push("hasta global"); if(p==null) miss.push("ağrı"); if(c==null) miss.push("CRP");
+    if(miss.length){ out.innerHTML=`<p style="color:var(--muted);margin:0">Eksik: ${miss.join(", ")}.</p>`; return; }
+    const warns=[]; if(t>68) warns.push("Hassas eklem 0–68 olmalı."); if(s>66) warns.push("Şiş eklem 0–66 olmalı."); if(g>10||p>10) warns.push("Global ve ağrı 0–10 olmalı.");
+    const crp = crpU==="mgL" ? c/10 : c;
+    const d = t+s+g+p+crp;
+    const cat=catFor(d,[{max:4,label:"Remisyon",cls:"ok"},{max:14,label:"Düşük aktivite",cls:"ok"},{max:28,label:"Orta aktivite",cls:"mid"},{max:1e9,label:"Yüksek aktivite",cls:"warn"}]);
+    let html = warns.length?`<div class="sutline"><b>!</b><span>${warns.join(" ")}</span></div>`:"";
+    html += `<div class="big"><span class="val">${fmt(d,1)}</span><span class="cat ${cat.cls}">${cat.label}</span></div>`;
+    html += bandHTML([{to:4,cls:"g"},{to:14,cls:"y"},{to:28,cls:"o"},{to:50,cls:"r"}],Math.min(d,50),0,50);
+    if(base!=null && base>0){
+     const pct=(base-d)/base*100;
+     const r = pct>=85?"Majör yanıt (DAPSA85)":pct>=75?"Orta yanıt (DAPSA75)":pct>=50?"Minör yanıt (DAPSA50)":"Yanıt yok";
+     html += `<div class="delta">${deltaBox("İyileşme (başlangıca göre)", "%"+fmt(pct,0), pct>0)}${deltaBox("DAPSA yanıtı", r, pct>=50)}</div>`;
+    }
+    html += `<p class="stamp">CRP'nin katkısı: ${fmt(crp,2)} (mg/dL). Bileşenler: HES ${t} + ŞES ${s} + HG ${fmt(g,1)} + ağrı ${fmt(p,1)} + CRP ${fmt(crp,2)}.</p>`;
+    out.innerHTML=html;
+   }
+   calc();
+  }};
+ },
+ essdai(){
+  const D=[
+   ["Konstitüsyonel",3,["Yok","Düşük: hafif/aralıklı ateş (37,5–38,5 °C), gece terlemesi ve/veya %5–10 istemsiz kilo kaybı","Orta: belirgin ateş (> 38,5 °C), gece terlemesi ve/veya > %10 istemsiz kilo kaybı"],"Enfeksiyona bağlı ateş ve gönüllü kilo kaybı hariç"],
+   ["Lenfadenopati ve lenfoma",4,["Yok","Düşük: herhangi bir bölgede ≥ 1 cm veya inguinal ≥ 2 cm LAP","Orta: herhangi bir bölgede ≥ 2 cm veya inguinal ≥ 3 cm LAP ve/veya splenomegali","Yüksek: güncel malign B hücreli lenfoproliferatif hastalık"],"Enfeksiyona bağlı LAP hariç"],
+   ["Glandüler",2,["Yok","Düşük: küçük glandüler şişlik — parotis ≤ 3 cm veya sınırlı submandibuler/lakrimal","Orta: belirgin şişlik — parotis > 3 cm veya belirgin submandibuler/lakrimal"],"Taş veya enfeksiyona bağlı şişlik hariç"],
+   ["Artiküler",2,["Yok","Düşük: el, el bileği, ayak bileği veya ayakta artralji + > 30 dk sabah sertliği","Orta: 28 eklemden 1–5'inde sinovit","Yüksek: 28 eklemden ≥ 6'sında sinovit"],"Osteoartrit hariç"],
+   ["Kutanöz",3,["Yok","Düşük: eritema multiforme","Orta: sınırlı kutanöz vaskülit (ürtikeryal vaskülit dahil), ayak/ayak bileği ile sınırlı purpura veya subakut kutanöz lupus","Yüksek: yaygın kutanöz vaskülit (ürtikeryal vaskülit dahil), yaygın purpura veya vaskülite bağlı ülser"],"≥ 6 aydır stabil, uzun süreli hasar ile ilişkili bulgular hariç"],
+   ["Pulmoner",5,["Yok","Düşük: radyolojik bulgu olmadan persistan öksürük/bronş tutulumu veya nefes darlığı olmayan ve SFT normal ILD","Orta: HRCT ile ILD + efor dispnesi (NYHA II) veya DLCO %40–70 ya da FVC %60–80","Yüksek: istirahat dispnesi (NYHA III–IV) ile ILD veya DLCO < %40 ya da FVC < %60"],"Sigaraya bağlı öksürük, uzun süreli stabil hasar hariç"],
+   ["Renal",5,["Yok","Düşük: böbrek yetmezliği olmadan tübüler asidoz veya hematüri/böbrek yetmezliği olmadan 0,5–1 g/gün proteinüri (GFR ≥ 60)","Orta: böbrek yetmezliği ile tübüler asidoz (GFR < 60) veya hematüri/yetmezlik olmadan 1–1,5 g/gün proteinüri, ya da histolojide ekstramembranöz GN veya belirgin interstisyel lenfoid infiltrasyon","Yüksek: > 1,5 g/gün proteinüri, hematüri veya böbrek yetmezliği (GFR < 60) ile glomerüler tutulum, ya da histolojide proliferatif GN veya kriyoglobulinemiye bağlı tutulum"],"Uzun süreli stabil hasar hariç"],
+   ["Kas",6,["Yok","Düşük: EMG/biyopsi ile hafif aktif miyozit, güçsüzlük yok, CK ≤ 2×NÜS","Orta: EMG/biyopsi ile miyozit + güçsüzlük (en fazla 4/5) veya CK 2–4×NÜS","Yüksek: EMG/biyopsi ile miyozit + güçsüzlük (≤ 3/5) veya CK > 4×NÜS"],"Kortikosteroide bağlı güçsüzlük hariç"],
+   ["Periferik sinir sistemi",5,["Yok","Düşük: ENMG ile saf duyusal aksonal polinöropati veya trigeminal nevralji","Orta: ENMG ile en fazla 4/5 motor kayıplı aksonal sensorimotor nöropati, kriyoglobulinemik vaskülitle saf duyusal nöropati, hafif–orta ataksili gangliyonopati, hafif fonksiyon kayıplı CIDP veya periferik kranyal sinir tutulumu (trigeminal nevralji hariç)","Yüksek: ≤ 3/5 motor kayıplı aksonal sensorimotor nöropati, vaskülite bağlı sinir tutulumu (mononöritis multipleks vb.), ağır ataksili gangliyonopati veya ağır fonksiyon kayıplı CIDP"],"≥ 6 aydır stabil uzun süreli hasar hariç"],
+   ["Santral sinir sistemi",5,["Yok",null,"Orta: santral kranyal sinir tutulumu, optik nörit veya saf duyusal bozukluk ya da kanıtlanmış bilişsel bozuklukla sınırlı MS benzeri sendrom","Yüksek: inme veya TİA ile serebral vaskülit, nöbet, transvers miyelit, lenfositik menenjit veya motor defisitli MS benzeri sendrom"],"Uzun süreli stabil hasar hariç"],
+   ["Hematolojik",2,["Yok","Düşük: otoimmün sitopeni — nötrofil 1000–1500/mm³ ve/veya Hb 10–12 g/dL ve/veya trombosit 100–150 bin ve/veya lenfosit 500–1000/mm³","Orta: nötrofil 500–1000, Hb 8–10 g/dL, trombosit 50–100 bin veya lenfosit ≤ 500/mm³","Yüksek: nötrofil < 500, Hb < 8 g/dL veya trombosit < 50 bin"],"Yalnızca otoimmün sitopeniler; B12, folat, demir eksikliği ve ilaca bağlı sitopeni hariç"],
+   ["Biyolojik",1,["Yok","Düşük: klonal bileşen ve/veya hipokomplementemi (C3, C4 veya CH50 düşük) ve/veya IgG 16–20 g/L","Orta: kriyoglobulinemi ve/veya IgG > 20 g/L ve/veya yeni başlayan hipogamaglobulinemi ya da IgG < 5 g/L'ye yeni düşüş"],""]
+  ];
+  const html = `
+  <h1>ESSDAI <small>EULAR Sjögren's Syndrome Disease Activity Index</small></h1>
+  <p class="src">Seror 2010, 2015. 12 alan; her alanda aktivite düzeyi × alan ağırlığı. Yalnızca Sjögren'e bağlı ve güncel aktif bulgular puanlanır. Aktivite: &lt; 5 düşük · 5–13 orta · ≥ 14 yüksek. Klinik anlamlı iyileşme ≥ 3 puan.</p>
+  ${D.map((d,i)=>`<div class="domain">${d[0]}<span>ağırlık ${d[1]}</span></div>
+   <div class="checks">${d[2].map((t,l)=>t==null?"":`<label class="chk"><input type="radio" name="es-${i}" value="${l}" ${l===0?"checked":""}><span>${t}${l===0&&d[3]?`<span class="sub">${d[3]}</span>`:""}</span><span class="pt">${l*d[1]}</span></label>`).join("")}</div>`).join("")}
+  <div class="grid">${field("es-base","Önceki ESSDAI (isteğe bağlı)",{max:123,step:1,hint:"Değişimi gösterir"})}</div>
+  <div class="actions"><button class="btn" type="button" id="es-clr">Sıfırla</button></div>
+  <div class="result sticky" id="out"></div>`;
+  return {html, init(root){
+   root.addEventListener("change",calc); root.addEventListener("input",calc);
+   $("#es-clr",root).addEventListener("click",()=>{ $$('input[type=radio][value="0"]',root).forEach(i=>i.checked=true); $("#es-base",root).value=""; calc(); });
+   function calc(){
+    let sc=0; const parts=[];
+    D.forEach((d,i)=>{ const l=+($(`input[name="es-${i}"]:checked`,root)?.value||0); if(l){ sc+=l*d[1]; parts.push(`${d[0]} ${l*d[1]}`); } });
+    const cat=catFor(sc,[{max:4,label:"Düşük aktivite",cls:"ok"},{max:13,label:"Orta aktivite",cls:"mid"},{max:999,label:"Yüksek aktivite",cls:"warn"}]);
+    let html=`<div class="big"><span class="val">${sc}</span><span class="cat ${cat.cls}">${cat.label}</span><span style="color:var(--muted);font-size:14px">/ 123</span></div>`;
+    html+=bandHTML([{to:5,cls:"g"},{to:14,cls:"o"},{to:40,cls:"r"}],Math.min(sc,40),0,40);
+    const base=numv("es-base");
+    if(base!=null){ const d=base-sc; html+=`<div class="delta">${deltaBox("Δ ESSDAI (önceki − güncel)",(d>0?"+":"")+d,d>0)}${deltaBox("Klinik anlamlı iyileşme (≥ 3)",d>=3?"Var":"Yok",d>=3)}</div>`; }
+    html+=`<p class="stamp" style="margin-top:8px">${parts.length?parts.join(" · "):"Aktif alan yok."}</p>`;
+    $("#out",root).innerHTML=html;
+   }
+   calc();
+  }};
+ },
+ bvas(){
+  // [ad, yeni/kötüleşen, persistan (null = persistan puanı yok)]
+  const SYS=[
+   ["Genel",3,2,[["Miyalji",1,1],["Artralji / artrit",1,1],["Ateş ≥ 38,0 °C",2,2],["Kilo kaybı ≥ 2 kg",2,2]]],
+   ["Kutanöz",6,3,[["İnfarkt",2,1],["Purpura",2,1],["Ülser",4,1],["Gangren",6,2],["Diğer deri vasküliti",2,1]]],
+   ["Mukoza / göz",6,3,[["Ağız ülseri / granülom",2,1],["Genital ülser",1,1],["Adneksiyal inflamasyon",4,2],["Belirgin proptozis",4,2],["Kırmızı göz — (epi)sklerit",2,1],["Kırmızı göz — konjonktivit / blefarit / keratit",1,1],["Bulanık görme",3,2],["Ani görme kaybı",6,null],["Üveit",6,2],["Retina değişikliği — vaskülit / damar trombozu / eksüda / kanama",6,2]]],
+   ["KBB",6,3,[["Kanlı burun akıntısı / kabuklanma / ülser / granülom",4,2],["Paranazal sinüs tutulumu",2,1],["Subglottik stenoz",6,3],["İletim tipi işitme kaybı",3,1],["Sensörinöral işitme kaybı",6,2]]],
+   ["Toraks",6,3,[["Wheezing",2,1],["Nodül veya kavite",3,null],["Plevral efüzyon / plörezi",4,2],["İnfiltrat",4,2],["Endobronşiyal tutulum",4,2],["Masif hemoptizi / alveoler hemoraji",6,4],["Solunum yetmezliği",6,4]]],
+   ["Kardiyovasküler",6,3,[["Nabız kaybı",4,1],["Kapak hastalığı",4,2],["Perikardit",3,1],["İskemik kardiyak ağrı",4,2],["Kardiyomiyopati",6,3],["Konjestif kalp yetmezliği",6,3]]],
+   ["Batın",9,4,[["Peritonizm",9,3],["Kanlı ishal",9,3],["İskemik karın ağrısı",6,2]]],
+   ["Renal",12,6,[["Hipertansiyon",4,1],["Proteinüri > 1+",4,2],["Hematüri ≥ 10 eritrosit/BBA",6,3],["Kreatinin 125–249 µmol/L (1,41–2,82 mg/dL)",4,null,"cr"],["Kreatinin 250–499 µmol/L (2,83–5,64 mg/dL)",6,null,"cr"],["Kreatinin ≥ 500 µmol/L (≥ 5,65 mg/dL)",8,null,"cr"],["Kreatininde > %30 artış veya klirenste > %25 düşüş",6,null]]],
+   ["Sinir sistemi",9,6,[["Baş ağrısı",1,1],["Menenjit",3,1],["Organik konfüzyon",3,1],["Nöbet (hipertansif olmayan)",9,3],["İnme",9,3],["Spinal kord lezyonu",9,3],["Kranyal sinir felci",6,3],["Duyusal periferik nöropati",6,3],["Motor mononöritis multipleks",9,3]]]
+  ];
+  let mode="new";
+  const html = `
+  <h1>BVAS v3 <small>Birmingham Vasculitis Activity Score, sürüm 3</small></h1>
+  <p class="src">Mukhtyar 2009. Son 4 haftadaki, vaskülite bağlı aktif bulgular işaretlenir. En az bir bulgu yeni/kötüleşen ise tüm bulgular yeni/kötüleşen ağırlığıyla puanlanır (en fazla 63); tüm bulgular persistan ise persistan ağırlıkla (en fazla 33). Her sistem kendi üst sınırıyla kesilir. BVAS = 0 remisyon.</p>
+  <div style="margin:10px 0 4px">${seg("bv-mode",[{v:"new",l:"Yeni / kötüleşen bulgu var"},{v:"pers",l:"Tüm bulgular persistan"}],"new")}</div>
+  ${SYS.map((sy,si)=>`<div class="domain">${sy[0]}<span>en fazla ${sy[1]} / ${sy[2]}</span></div><div class="checks">${sy[3].map((it,ii)=>`<label class="chk"><input type="${it[3]?"checkbox":"checkbox"}" data-s="${si}" data-i="${ii}" ${it[3]?`data-x="${it[3]}"`:""}><span>${it[0]}</span><span class="pt" data-n="${it[1]}" data-p="${it[2]==null?"–":it[2]}">${it[1]}</span></label>`).join("")}</div>`).join("")}
+  <div class="actions"><button class="btn" type="button" id="bv-clr">Temizle</button></div>
+  <div class="result sticky" id="out"></div>`;
+  return {html, init(root){
+   const m=$("#bv-mode",root);
+   m.addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return; mode=b.dataset.v; $$("button",m).forEach(x=>x.setAttribute("aria-pressed",x===b)); $$(".pt[data-n]",root).forEach(p=>p.textContent=mode==="new"?p.dataset.n:p.dataset.p); calc(); });
+   root.addEventListener("change",e=>{ const t=e.target; if(t.dataset.x&&t.checked) $$(`input[data-x="${t.dataset.x}"]`,root).forEach(o=>{ if(o!==t) o.checked=false; }); calc(); });
+   $("#bv-clr",root).addEventListener("click",()=>{ $$("input[type=checkbox]",root).forEach(i=>i.checked=false); calc(); });
+   function calc(){
+    let tot=0; const parts=[]; let zeroP=false;
+    SYS.forEach((sy,si)=>{ let s=0;
+     $$(`input[data-s="${si}"]:checked`,root).forEach(c=>{ const it=sy[3][+c.dataset.i]; const w=mode==="new"?it[1]:it[2]; if(w==null) zeroP=true; s+=w||0; });
+     const cap=mode==="new"?sy[1]:sy[2]; const v=Math.min(s,cap); if(v){ tot+=v; parts.push(`${sy[0]} ${v}${s>cap?" (sınır)":""}`); } });
+    const cat = tot===0?{label:"Aktif bulgu yok (remisyon)",cls:"ok"}:mode==="pers"?{label:"Persistan aktif hastalık",cls:"mid"}:{label:"Aktif hastalık (yeni/kötüleşen)",cls:"warn"};
+    const max=mode==="new"?63:33;
+    let html=`<div class="big"><span class="val">${tot}</span><span class="cat ${cat.cls}">${cat.label}</span><span style="color:var(--muted);font-size:14px">/ ${max}</span></div>`;
+    html+=bandHTML([{to:max,cls:tot===0?"g":mode==="new"?"r":"o"}],tot,0,max);
+    if(zeroP) html+=`<div class="sutline no"><b>Not</b><span>Ani görme kaybı, nodül/kavite ve kreatinin maddelerinin persistan puanı yoktur; bu modda 0 sayıldı.</span></div>`;
+    html+=`<p class="stamp" style="margin-top:8px">${parts.length?parts.join(" · "):"İşaretli bulgu yok."}</p>`;
+    $("#out",root).innerHTML=html;
+   }
+   calc();
+  }};
+ },
+ itas(){
+  const IT=[
+   ["Sistemik",[["Halsizlik / kilo kaybı > 2 kg",1],["Miyalji / artralji / artrit",1],["Baş ağrısı",1]]],
+   ["Batın",[["Şiddetli karın ağrısı",1]]],
+   ["Genitoüriner",[["Abortus",1]]],
+   ["Renal",[["Diyastolik KB > 90 mmHg",2],["Sistolik KB > 140 mmHg",1]]],
+   ["Sinir sistemi",[["İnme",2],["Nöbet (hipertansif olmayan)",1],["Senkop",1],["Vertigo / baş dönmesi",1]]],
+   ["Kardiyovasküler",[["Arteriyel üfürüm (bruit)",2],["Nabız eşitsizliği (kol/bacak arası veya iki taraf arası)",2],["Yeni nabız kaybı",2],["Kladikasyon",2],["Karotidini",2],["Aort yetmezliği",1],["Miyokard infarktüsü / angina",1],["Kardiyomiyopati / kalp yetmezliği",1]]]
+  ];
+  const html = `
+  <h1>ITAS2010 <small>Indian Takayasu Clinical Activity Score</small></h1>
+  <p class="src">Misra 2013. Son 3 ayda yeni ortaya çıkan veya kötüleşen, Takayasu arteritine bağlı bulgular işaretlenir; ilk vizitte mevcut tüm bulgular sayılır. Yedi anahtar madde 2 puan, diğerleri 1 puan. Aktif hastalık: ITAS2010 ≥ 2, ITAS-A ≥ 5.</p>
+  ${IT.map((sy,si)=>`<div class="domain">${sy[0]}</div><div class="checks">${sy[1].map((it,ii)=>`<label class="chk"><input type="checkbox" data-w="${it[1]}"><span>${it[0]}</span><span class="pt">${it[1]}</span></label>`).join("")}</div>`).join("")}
+  <h3>ITAS-A — akut faz (son 30 gün)</h3>
+  <div class="grid">${field("it-esr","ESH (mm/saat)",{max:200,hint:"≤ 20: 0 · 21–39: 1 · 40–59: 2 · ≥ 60: 3"})}${field("it-crp","CRP (mg/L)",{max:500,step:0.1,hint:"≤ 5: 0 · 6–10: 1 · 11–20: 2 · > 20: 3"})}</div>
+  <div class="actions"><button class="btn" type="button" id="it-clr">Temizle</button></div>
+  <div class="result sticky" id="out"></div>`;
+  return {html, init(root){
+   root.addEventListener("change",calc); root.addEventListener("input",calc);
+   $("#it-clr",root).addEventListener("click",()=>{ $$("input[type=checkbox]",root).forEach(i=>i.checked=false); $("#it-esr",root).value=""; $("#it-crp",root).value=""; calc(); });
+   function calc(){
+    const sc=$$("input[type=checkbox]:checked",root).reduce((a,c)=>a+ +c.dataset.w,0);
+    const esr=numv("it-esr"), crp=numv("it-crp");
+    const pe = esr==null?null: esr<=20?0: esr<40?1: esr<60?2:3;
+    const pc = crp==null?null: crp<=5?0: crp<=10?1: crp<=20?2:3;
+    const apr = pe==null&&pc==null?null:Math.max(pe??0,pc??0);
+    const act=sc>=2;
+    let html=`<div class="big"><span class="val">${sc}</span><span class="cat ${act?"warn":"ok"}">${act?"Aktif (ITAS2010 ≥ 2)":"İnaktif"}</span><span style="color:var(--muted);font-size:14px">ITAS2010</span></div>`;
+    html+=bandHTML([{to:2,cls:"g"},{to:26,cls:"r"}],Math.min(sc,26),0,26);
+    if(apr!=null){ const a=sc+apr, aa=a>=5;
+     html+=`<div class="delta">${deltaBox("Akut faz puanı",`+${apr}${pe!=null&&pc!=null?` (ESH ${pe}, CRP ${pc}; yüksek olan)`:""}`,apr===0)}${deltaBox("ITAS-A",`${a} — ${aa?"aktif":"inaktif"}`,!aa)}</div>`; }
+    html+=`<p class="stamp" style="margin-top:8px">Bu hesaplayıcıda her bulgu türü bir kez puanlanır; orijinal formda arter bazında işaretlenen kardiyovasküler bulgular için kurum formunuzla karşılaştırın.</p>`;
+    $("#out",root).innerHTML=html;
+   }
+   calc();
+  }};
+ },
+ vdi(){
+  const V=[
+   ["Kas-iskelet",["Belirgin kas atrofisi veya güçsüzlük","Deformite yapan / eroziv artrit","Kırık veya vertebra çökmesiyle osteoporoz","Avasküler nekroz","Osteomiyelit"]],
+   ["Deri / mukoza",["Alopesi","Deri ülseri","Ağız ülseri"]],
+   ["Göz",["Katarakt","Retina değişikliği","Optik atrofi","Görme bozukluğu / diplopi","Bir gözde körlük","İkinci gözde körlük","Orbita duvarı destrüksiyonu"]],
+   ["KBB",["İşitme kaybı","Burun tıkanıklığı / kronik akıntı / kabuklanma","Burun kökü çökmesi / septum perforasyonu","Kronik sinüzit / radyolojik hasar","Subglottik stenoz (cerrahi yok)","Subglottik stenoz (cerrahi ile)"]],
+   ["Akciğer",["Pulmoner hipertansiyon","Pulmoner fibroz","Pulmoner infarkt","Plevral fibroz","Kronik astım","Kronik nefes darlığı","Bozulmuş solunum fonksiyonu"]],
+   ["Kardiyovasküler",["Angina / anjiyoplasti / koroner bypass","Miyokard infarktüsü","İkinci miyokard infarktüsü","Kardiyomiyopati","Kapak hastalığı","> 3 ay süren perikardit veya perikardiyektomi","Diyastolik KB ≥ 95 mmHg veya antihipertansif gereksinimi"]],
+   ["Periferik damar",["Bir ekstremitede nabız kaybı","İkinci nabız kaybı epizodu","Büyük damar stenozu","> 3 ay kladikasyon","Minör doku kaybı","Majör doku kaybı","İkinci majör doku kaybı","Komplike venöz tromboz"]],
+   ["Gastrointestinal",["Barsak infarktı / rezeksiyonu","Mezenterik yetmezlik / pankreatit","Kronik peritonit","Özofagus darlığı / cerrahisi"]],
+   ["Renal",["GFR ≤ %50","Proteinüri ≥ 0,5 g/24 saat","Son dönem böbrek yetmezliği"]],
+   ["Nöropsikiyatrik",["Bilişsel bozukluk","Majör psikoz","Nöbet","Serebrovasküler olay","İkinci serebrovasküler olay","Kranyal sinir lezyonu","Periferik nöropati","Transvers miyelit"]],
+   ["Diğer",["Gonadal yetmezlik","Kemik iliği yetmezliği","Diyabet","Kimyasal sistit","Malignite","Diğer"]]
+  ];
+  const html = `
+  <h1>VDI <small>Vasculitis Damage Index</small></h1>
+  <p class="src">Exley 1997. Vaskülit başlangıcından sonra ortaya çıkan ve en az 3 aydır süren hasar, nedeninden bağımsız (hastalık, tedavi veya komorbidite) puanlanır; her madde 1 puan, en fazla 64. Hasar birikimseldir — önceki vizitte kayıtlı maddeler korunur. Tekrarlayan olaylar (körlük, MI, nabız kaybı, doku kaybı, inme) en az 3 ay arayla olmalıdır.</p>
+  ${V.map((sy,si)=>`<div class="domain">${sy[0]}<span>${sy[1].length} madde</span></div><div class="checks">${sy[1].map(t=>`<label class="chk"><input type="checkbox"><span>${t}</span><span class="pt">1</span></label>`).join("")}</div>`).join("")}
+  <div class="actions"><button class="btn" type="button" id="vd-clr">Temizle</button></div>
+  <div class="result sticky" id="out"></div>`;
+  return {html, init(root){
+   root.addEventListener("change",calc);
+   $("#vd-clr",root).addEventListener("click",()=>{ $$("input[type=checkbox]",root).forEach(i=>i.checked=false); calc(); });
+   function calc(){
+    const parts=[]; let tot=0;
+    $$(".checks",root).forEach((c,i)=>{ const n=$$("input:checked",c).length; if(n){ tot+=n; parts.push(`${V[i][0]} ${n}`); } });
+    const cat=tot===0?{label:"Hasar yok",cls:"ok"}:{label:`${tot} hasar maddesi`,cls:"neutral"};
+    let html=`<div class="big"><span class="val">${tot}</span><span class="cat ${cat.cls}">${cat.label}</span><span style="color:var(--muted);font-size:14px">/ 64</span></div>`;
+    html+=bandHTML([{to:15,cls:tot===0?"g":"o"}],Math.min(tot,15),0,15);
+    html+=`<p class="stamp" style="margin-top:8px">${parts.length?parts.join(" · "):"İşaretli hasar maddesi yok."} VDI'nin resmî şiddet eşikleri yoktur; izlemde artış önemlidir.</p>`;
+    $("#out",root).innerHTML=html;
    }
    calc();
   }};
@@ -394,20 +749,20 @@ const customCriteria={
 };
 
 /* ---------- Rapor şablonları ---------- */
-const FILL_KEYS=[["ILAC","Etken madde","örn. adalimumab"],["S0","Başlangıç skoru","DAS28 / BASDAİ / CRP"],["S1","Güncel skor",""],["IGIF","İGİF seri no",""],["ONAY","Onay formu seri no",""],["TARIH","Tarih","gg.aa.yyyy"]];
+const FILL_KEYS=[["S0","Başlangıç skoru","DAS28 / BASDAİ / CRP"],["S1","Güncel skor",""],["IGIF","İGİF seri no",""],["ONAY","Onay formu seri no",""],["TARIH","Tarih","gg.aa.yyyy"]];
 const fillState={};
 function applyFill(text){
  return text.replace(/\{(ILAC|S0|S1|IGIF|ONAY|TARIH)\}/g,(m,k)=>fillState[k]&&fillState[k].trim()?fillState[k].trim():"……");
 }
 function renderTemplates(t){
- let html=`<h1>${t.title}<small>${t.sub}</small></h1><p class="src">Kaynak: TRD-G Anti-Romatizmal İlaçlar Kılavuzu, Kasım 2025 — "rapora eklenmesi gereken ifade" örnekleri.</p>`;
+ let html=`<h1>${t.title}<small>${t.sub}</small></h1>${t.src?`<p class="src">Kaynak: ${t.src} — rapor açıklamasına doğrudan yapıştırılacak biçimde.</p>`:""}`;
  if(t.html){ html+=t.html+`<p class="stamp">${TPL_STAMP}</p>`; return {html}; }
  html+=`<div class="fill">${FILL_KEYS.map(([k,l,h])=>`<div class="field"><label for="f-${k}">${l}</label><input type="text" id="f-${k}" data-k="${k}" value="${(fillState[k]||"").replace(/"/g,"&quot;")}" placeholder="${h}"></div>`).join("")}</div>
- <p class="note">Doldurduğunuz alanlar tüm şablonlara "……" yerine işlenir; boş bırakılanlar "……" olarak kalır. Metin kutuları düzenlenebilir; köşeli parantez içindeki seçenekleri silin veya uyarlayın.</p>`;
+ <p class="note">Doldurduğunuz alanlar tüm şablonlara "……" yerine işlenir; boş bırakılanlar "……" olarak kalır. Metinler doğrudan rapor açıklamasına yapıştırılabilir; mevzuat açıklaması içermez. Mor notlar hatırlatmadır, kopyalanmaz.</p>`;
  t.groups.forEach((g,gi)=>{
   html+=`<h2 class="grp">${g.name}</h2>`;
   g.items.forEach((it,ii)=>{
-   html+=`<div class="tpl" data-g="${gi}" data-i="${ii}"><div class="tpl-h"><b>${it.t}</b><span class="dur">${it.dur}</span></div><textarea spellcheck="false">${applyFill(it.text)}</textarea><div class="tpl-f"><button type="button" class="btn primary cp">Kopyala</button><button type="button" class="btn rs">Sıfırla</button><span class="st"></span></div></div>`;
+   html+=`<div class="tpl" data-g="${gi}" data-i="${ii}"><div class="tpl-h"><b>${it.t}</b><span class="dur">${it.dur}</span>${it.ilac?`<span class="ilac">${it.ilac}</span>`:""}</div>${it.note?`<div class="tpl-n">${it.note}</div>`:""}<textarea spellcheck="false">${applyFill(it.text)}</textarea><div class="tpl-f"><button type="button" class="btn primary cp">Kopyala</button><button type="button" class="btn rs">Sıfırla</button><span class="st"></span></div></div>`;
   });
  });
  html+=`<p class="stamp">${TPL_STAMP}</p>`;
@@ -463,14 +818,61 @@ function render(){
  const {sec,id}=parse();
  renderIndex(sec,id);
  const main=$("#main"); main.innerHTML="";
- const card=document.createElement("section"); card.className="card"+(sec==="crit"?" crit":"");
+ const card=document.createElement("section"); card.className="card enter"+(sec==="crit"?" crit":"");
  if(sec==="calc"){ const v=calcViews[id](); card.innerHTML=v.html; main.appendChild(card); v.init(card); }
  else if(sec==="sut"){ const s=SUT.find(x=>x.id===id); card.innerHTML=`<h1>${s.title}<small>${s.sub}</small></h1><p class="src">SUT 4.2.1.C — özet; hukuki metin değildir.</p>${s.html}<p class="stamp">${SUT_STAMP}</p>`; main.appendChild(card); }
  else if(sec==="tpl"){ const v=renderTemplates(TEMPLATES.find(x=>x.id===id)); card.innerHTML=v.html; main.appendChild(card); v.init&&v.init(card); }
  else { const c=CRITERIA.find(x=>x.id===id); const v=c.custom?customCriteria[c.custom](c):renderGenericCriteria(c); card.innerHTML=v.html; main.appendChild(card); v.init(card); }
  document.title=`${(sec==="calc"?CALCS:sec==="sut"?SUT:sec==="tpl"?TEMPLATES:CRITERIA).find(x=>x.id===id).title} — Romatoloji Masası`;
  window.scrollTo({top:0});
+ placeIndicators();
 }
+
+/* ---------- Hareket: gezinme göstergeleri, kayan sayılar ve işaretçi ---------- */
+const REDUCED = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+let sidePrev=null;
+function placeIndicators(){
+ const nav=$(".nav"), ni=$(".nav-ind"), cur=$(".nav a[aria-current]");
+ if(ni&&cur){ ni.style.left=cur.offsetLeft+"px"; ni.style.width=cur.offsetWidth+"px"; }
+ const ul=$("#index ul"), on=$("#index a.on");
+ if(ul&&on&&window.innerWidth>=860){
+  const ind=document.createElement("span"); ind.className="side-ind"; ul.prepend(ind);
+  const li=on.parentElement, t=li.offsetTop, h=li.offsetHeight;
+  if(sidePrev&&!REDUCED){ ind.style.top=sidePrev.t+"px"; ind.style.height=sidePrev.h+"px"; ind.getBoundingClientRect(); }
+  else ind.style.transition="none";
+  requestAnimationFrame(()=>{ ind.style.top=t+"px"; ind.style.height=h+"px"; });
+  sidePrev={t,h};
+ }
+}
+window.addEventListener("resize",()=>{ const ni=$(".nav-ind"), cur=$(".nav a[aria-current]"); if(ni&&cur){ ni.style.transition="none"; ni.style.left=cur.offsetLeft+"px"; ni.style.width=cur.offsetWidth+"px"; requestAnimationFrame(()=>ni.style.transition=""); } });
+
+const lastNum=new Map(), lastMk=new Map();
+const parseTR = t => { const m=String(t).trim().match(/^-?\d+(?:,\d+)?$/); return m?parseFloat(m[0].replace(",",".")):null; };
+function rollNumbers(){
+ const keyBase=location.hash;
+ $$("#main .val, #main .ra-tile .v").forEach((el,i)=>{
+  if(el.dataset.t!=null) return;
+  const txt=el.textContent.trim(); el.dataset.t=txt;
+  const key=keyBase+"|"+i+"|"+(el.closest(".ra-tile")?.querySelector(".nm")?.textContent||"");
+  const to=parseTR(txt), from=lastNum.get(key);
+  lastNum.set(key,to);
+  if(to==null||from==null||from===to||REDUCED) return;
+  const dec=(txt.split(",")[1]||"").length, t0=performance.now(), dur=420;
+  const step=now=>{ const k=Math.min(1,(now-t0)/dur), e=1-Math.pow(1-k,3), v=from+(to-from)*e;
+   el.textContent=(k<1? v.toFixed(dec) : to.toFixed(dec)).replace(".",",");
+   if(k<1) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+ });
+ $$("#main .band .mk").forEach((mk,i)=>{
+  if(mk.dataset.t!=null) return; mk.dataset.t="1";
+  const key=location.hash+"|mk|"+i, to=mk.style.left, from=lastMk.get(key);
+  lastMk.set(key,to);
+  if(from==null||from===to||REDUCED) return;
+  mk.style.transition="none"; mk.style.left=from; mk.getBoundingClientRect();
+  mk.style.transition=""; mk.style.left=to;
+ });
+}
+new MutationObserver(rollNumbers).observe($("#main"),{childList:true,subtree:true});
 window.addEventListener("hashchange",render);
 $("#foot-stamp").textContent=SUT_STAMP;
 render();
